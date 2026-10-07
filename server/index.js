@@ -49,5 +49,68 @@ app.post("/nodes", async (req, res) => {
   }
 });
 
+// Is candidateId the same node as nodeId, or somewhere inside it?
+async function isSelfOrDescendant(nodeId, candidateId) {
+  let currentId = candidateId;
+  while (currentId) {
+    if (currentId === nodeId) return true;
+    const current = await nodes.where({ id: currentId }).first();
+    currentId = current ? current.parentId : null;
+  }
+  return false;
+}
+
+// Rename, edit content, reorder, or move a node
+app.patch("/nodes/:id", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const existing = await nodes.where({ id, userId: TEMP_USER_ID }).first();
+    if (!existing) return res.status(404).json({ error: "Node not found" });
+
+    // Only update the fields the client actually sent
+    const data = {};
+    for (const field of ["name", "content", "position", "parentId"]) {
+      if (req.body[field] !== undefined) data[field] = req.body[field];
+    }
+    if (Object.keys(data).length === 0) {
+      return res.status(400).json({ error: "Nothing to update" });
+    }
+
+    // Validate a move
+    if (data.parentId) {
+      const newParent = await nodes.where({ id: data.parentId, userId: TEMP_USER_ID }).first();
+      if (!newParent || newParent.type !== "folder") {
+        return res.status(400).json({ error: "New parent must be an existing folder" });
+      }
+      if (await isSelfOrDescendant(id, data.parentId)) {
+        return res.status(400).json({ error: "Cannot move a folder into itself or its own subfolder" });
+      }
+    }
+
+    const updated = await nodes.where({ id }).update(data);
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Could not update node" });
+  }
+});
+
+// Delete a node (a folder takes everything inside it along)
+app.delete("/nodes/:id", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const existing = await nodes.where({ id, userId: TEMP_USER_ID }).first();
+    if (!existing) return res.status(404).json({ error: "Node not found" });
+
+    await nodes.where({ id }).delete();
+    res.status(204).end();
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Could not delete node" });
+  }
+});
+
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
