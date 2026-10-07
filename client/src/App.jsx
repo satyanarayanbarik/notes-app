@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const API = "http://localhost:4000";
 
-// Small fetch helper: sends JSON, returns parsed JSON (or null for 204)
 async function api(path, options = {}) {
   const res = await fetch(`${API}${path}`, {
     headers: { "Content-Type": "application/json" },
@@ -12,12 +11,10 @@ async function api(path, options = {}) {
   return res.status === 204 ? null : res.json();
 }
 
-// "2026-10-07 19:31:32.06+00" -> a Date every browser can parse
 function parseDate(value) {
   return new Date(value.replace(" ", "T").replace(/\+00$/, "Z"));
 }
 
-// Turn the flat list from the API into a nested tree
 function buildTree(flat) {
   const byId = new Map(flat.map((n) => [n.id, { ...n, children: [] }]));
   const roots = [];
@@ -37,9 +34,37 @@ function buildTree(flat) {
   return roots;
 }
 
-function TreeItem({ node, depth, selectedId, onSelect }) {
+const iconButton = {
+  border: "none",
+  background: "transparent",
+  cursor: "pointer",
+  padding: "0 4px",
+  color: "inherit",
+};
+
+function TreeItem({ node, depth, selectedId, onSelect, onRename, onDelete }) {
   const [open, setOpen] = useState(true);
+  const [hover, setHover] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(node.name);
+  const cancelled = useRef(false);
   const isFolder = node.type === "folder";
+
+  function startEdit() {
+    setDraft(node.name);
+    setEditing(true);
+  }
+
+  function finishEdit() {
+    setEditing(false);
+    const name = draft.trim();
+    if (!cancelled.current && name && name !== node.name) {
+      onRename(node.id, name);
+    }
+    cancelled.current = false;
+  }
+
+  const icon = isFolder ? (open ? "▾ 📁" : "▸ 📁") : "📄";
 
   return (
     <div>
@@ -48,15 +73,72 @@ function TreeItem({ node, depth, selectedId, onSelect }) {
           onSelect(node.id);
           if (isFolder) setOpen(!open);
         }}
+        onDoubleClick={startEdit}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
         style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
           padding: `4px 8px 4px ${8 + depth * 16}px`,
           cursor: "pointer",
           background:
             node.id === selectedId ? "rgba(128,128,128,0.25)" : "transparent",
         }}
       >
-        {isFolder ? (open ? "▾ 📁" : "▸ 📁") : "📄"} {node.name}
+        {editing ? (
+          <span style={{ display: "flex", gap: 4, flex: 1 }}>
+            {icon}
+            <input
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onFocus={(e) => e.target.select()}
+              onClick={(e) => e.stopPropagation()}
+              onDoubleClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+                if (e.key === "Escape") {
+                  cancelled.current = true;
+                  e.currentTarget.blur();
+                }
+              }}
+              onBlur={finishEdit}
+              style={{ flex: 1, minWidth: 0 }}
+            />
+          </span>
+        ) : (
+          <span>
+            {icon} {node.name}
+          </span>
+        )}
+
+        {hover && !editing && (
+          <span>
+            <button
+              title="Rename"
+              style={iconButton}
+              onClick={(e) => {
+                e.stopPropagation();
+                startEdit();
+              }}
+            >
+              ✎
+            </button>
+            <button
+              title="Delete"
+              style={iconButton}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(node.id);
+              }}
+            >
+              ✕
+            </button>
+          </span>
+        )}
       </div>
+
       {isFolder &&
         open &&
         node.children.map((child) => (
@@ -66,13 +148,14 @@ function TreeItem({ node, depth, selectedId, onSelect }) {
             depth={depth + 1}
             selectedId={selectedId}
             onSelect={onSelect}
+            onRename={onRename}
+            onDelete={onDelete}
           />
         ))}
     </div>
   );
 }
 
-// The main panel. It is given key={note.id} so it resets when you open another note.
 function NoteEditor({ note, onSave }) {
   const [text, setText] = useState(note.content?.text ?? "");
 
@@ -111,7 +194,6 @@ export default function App() {
     const name = window.prompt(type === "folder" ? "Folder name" : "Note name");
     if (!name || !name.trim()) return;
 
-    // Goes inside the selected folder, beside the selected note, or at the top level
     const parentId = selected
       ? selected.type === "folder"
         ? selected.id
@@ -122,6 +204,28 @@ export default function App() {
       method: "POST",
       body: JSON.stringify({ type, name: name.trim(), parentId }),
     });
+    await load();
+  }
+
+  async function renameNode(id, name) {
+    await api(`/nodes/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    });
+    await load();
+  }
+
+  async function deleteNode(id) {
+    const node = nodes.find((n) => n.id === id);
+    if (!node) return;
+    const what =
+      node.type === "folder"
+        ? `the folder "${node.name}" and everything inside it`
+        : `"${node.name}"`;
+    if (!window.confirm(`Delete ${what}?`)) return;
+
+    await api(`/nodes/${id}`, { method: "DELETE" });
+    if (id === selectedId) setSelectedId(null);
     await load();
   }
 
@@ -149,6 +253,8 @@ export default function App() {
             depth={0}
             selectedId={selectedId}
             onSelect={setSelectedId}
+            onRename={renameNode}
+            onDelete={deleteNode}
           />
         ))}
       </aside>
