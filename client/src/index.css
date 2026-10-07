@@ -2,3 +2,19 @@ body {
   margin: 0;
   font-family: system-ui, sans-serif;
 }
+.ProseMirror {
+  outline: none;
+  min-height: 50vh;
+  padding: 8px 0;
+}
+
+.ProseMirror pre {
+  background: rgba(128, 128, 128, 0.2);
+  padding: 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.ProseMirror code {
+  font-family: ui-monospace, monospace;
+}

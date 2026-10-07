@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
+import { useEditor, EditorContent } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
 const API = "http://localhost:4000";
 
 async function api(path, options = {}) {
@@ -156,20 +157,115 @@ function TreeItem({ node, depth, selectedId, onSelect, onRename, onDelete }) {
   );
 }
 
+// Old notes saved as { text } get converted; new ones are stored as TipTap JSON
+function toDoc(content) {
+  if (content?.type === "doc") return content;
+  if (content?.text) {
+    return {
+      type: "doc",
+      content: content.text.split("\n").map((line) =>
+        line
+          ? { type: "paragraph", content: [{ type: "text", text: line }] }
+          : { type: "paragraph" }
+      ),
+    };
+  }
+  return { type: "doc", content: [{ type: "paragraph" }] };
+}
+
+const STATUS_LABEL = {
+  saved: "Saved",
+  unsaved: "Unsaved changes...",
+  saving: "Saving...",
+  error: "Could not save, will retry on your next edit",
+};
+
 function NoteEditor({ note, onSave }) {
-  const [text, setText] = useState(note.content?.text ?? "");
+  const [status, setStatus] = useState("saved");
+  const timer = useRef(null);
+  const pending = useRef(null); // latest unsaved document, or null
+  const onSaveRef = useRef(onSave);
+
+  useEffect(() => {
+    onSaveRef.current = onSave;
+  });
+
+  const flush = useCallback(async () => {
+    clearTimeout(timer.current);
+    const doc = pending.current;
+    if (!doc) return;
+    pending.current = null;
+    setStatus("saving");
+    try {
+      await onSaveRef.current(note.id, doc);
+      setStatus(pending.current ? "unsaved" : "saved");
+    } catch {
+      pending.current = pending.current ?? doc; // keep it so the next edit retries
+      setStatus("error");
+    }
+  }, [note.id]);
+
+  const editor = useEditor({
+    extensions: [StarterKit],
+    content: toDoc(note.content),
+    shouldRerenderOnTransaction: true, // keeps toolbar buttons in sync
+    onUpdate: ({ editor }) => {
+      pending.current = editor.getJSON();
+      setStatus("unsaved");
+      clearTimeout(timer.current);
+      timer.current = setTimeout(flush, 800); // save 0.8s after you stop typing
+    },
+  });
+
+  // Save anything still pending when you switch notes or leave the page
+  useEffect(() => () => flush(), [flush]);
+  useEffect(() => {
+    const warn = (e) => {
+      if (pending.current) e.preventDefault();
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, []);
+
+  if (!editor) return null;
+
+  const btn = (label, active, run) => (
+    <button
+      key={label}
+      onClick={run}
+      style={{ fontWeight: active ? "bold" : "normal", marginRight: 4 }}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <div style={{ padding: 24 }}>
       <h2 style={{ margin: 0 }}>{note.name}</h2>
-      <small>Created {parseDate(note.createdAt).toLocaleDateString()}</small>
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onBlur={() => onSave(note.id, text)}
-        placeholder="Start writing..."
-        style={{ display: "block", width: "100%", height: "60vh", marginTop: 16 }}
-      />
+      <small>
+        Created {parseDate(note.createdAt).toLocaleDateString()} ·{" "}
+        {STATUS_LABEL[status]}
+      </small>
+
+      <div style={{ margin: "16px 0 8px" }}>
+        {btn("B", editor.isActive("bold"), () =>
+          editor.chain().focus().toggleBold().run()
+        )}
+        {btn("I", editor.isActive("italic"), () =>
+          editor.chain().focus().toggleItalic().run()
+        )}
+        {btn("H2", editor.isActive("heading", { level: 2 }), () =>
+          editor.chain().focus().toggleHeading({ level: 2 }).run()
+        )}
+        {btn("List", editor.isActive("bulletList"), () =>
+          editor.chain().focus().toggleBulletList().run()
+        )}
+        {btn("Code block", editor.isActive("codeBlock"), () =>
+          editor.chain().focus().toggleCodeBlock().run()
+        )}
+      </div>
+
+      <EditorContent editor={editor} />
     </div>
   );
 }
@@ -229,12 +325,21 @@ export default function App() {
     await load();
   }
 
+  /*
   async function saveContent(id, text) {
     await api(`/nodes/${id}`, {
       method: "PATCH",
       body: JSON.stringify({ content: { text } }),
     });
     await load();
+  } */
+  
+  async function saveContent(id, doc) {
+    const updated = await api(`/nodes/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ content: doc }),
+    });
+    setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, ...updated } : n)));
   }
 
   return (
