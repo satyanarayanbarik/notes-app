@@ -18,3 +18,39 @@ body {
 .ProseMirror code {
   font-family: ui-monospace, monospace;
 }
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-built_in {
+  color: #c678dd;
+}
+
+.hljs-string,
+.hljs-attr,
+.hljs-template-variable {
+  color: #3fa66a;
+}
+
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet {
+  color: #d19a66;
+}
+
+.hljs-title,
+.hljs-function .hljs-title,
+.hljs-section {
+  color: #4a90e2;
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: #8a8f98;
+  font-style: italic;
+}
+
+.hljs-variable,
+.hljs-name,
+.hljs-tag {
+  color: #e06c75;
+}

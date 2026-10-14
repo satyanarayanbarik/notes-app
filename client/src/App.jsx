@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
+import { common, createLowlight } from "lowlight";
 const API = "http://localhost:4000";
 
 async function api(path, options = {}) {
@@ -157,6 +159,55 @@ function TreeItem({ node, depth, selectedId, onSelect, onRename, onDelete }) {
   );
 }
 
+const lowlight = createLowlight(common);
+
+const LANGUAGES = [
+  ["", "Auto-detect"],
+  ["javascript", "JavaScript"],
+  ["typescript", "TypeScript"],
+  ["python", "Python"],
+  ["json", "JSON"],
+  ["xml", "HTML / XML"],
+  ["css", "CSS"],
+  ["bash", "Bash"],
+  ["sql", "SQL"],
+  ["java", "Java"],
+  ["cpp", "C / C++"],
+  ["go", "Go"],
+  ["rust", "Rust"],
+];
+const PRETTIER = {
+  javascript: {
+    parser: "babel",
+    plugins: () => Promise.all([import("prettier/plugins/babel"), import("prettier/plugins/estree")]),
+  },
+  typescript: {
+    parser: "typescript",
+    plugins: () => Promise.all([import("prettier/plugins/typescript"), import("prettier/plugins/estree")]),
+  },
+  json: {
+    parser: "json",
+    plugins: () => Promise.all([import("prettier/plugins/babel"), import("prettier/plugins/estree")]),
+  },
+  css: {
+    parser: "css",
+    plugins: () => Promise.all([import("prettier/plugins/postcss")]),
+  },
+  xml: {
+    parser: "html",
+    plugins: () => Promise.all([import("prettier/plugins/html")]),
+  },
+};
+
+async function formatCode(code, language) {
+  const config = PRETTIER[language];
+  if (!config) throw new Error("unsupported");
+  const [prettier, plugins] = await Promise.all([
+    import("prettier/standalone"),
+    config.plugins(),
+  ]);
+  return prettier.format(code, { parser: config.parser, plugins });
+}
 // Old notes saved as { text } get converted; new ones are stored as TipTap JSON
 function toDoc(content) {
   if (content?.type === "doc") return content;
@@ -182,6 +233,7 @@ const STATUS_LABEL = {
 
 function NoteEditor({ note, onSave }) {
   const [status, setStatus] = useState("saved");
+  const [formatMsg, setFormatMsg] = useState("");
   const timer = useRef(null);
   const pending = useRef(null); // latest unsaved document, or null
   const onSaveRef = useRef(onSave);
@@ -206,7 +258,9 @@ function NoteEditor({ note, onSave }) {
   }, [note.id]);
 
   const editor = useEditor({
-    extensions: [StarterKit],
+    extensions: [
+      StarterKit.configure({ codeBlock: false }),
+      CodeBlockLowlight.configure({ lowlight, enableTabIndentation: true }),],
     content: toDoc(note.content),
     shouldRerenderOnTransaction: true, // keeps toolbar buttons in sync
     onUpdate: ({ editor }) => {
@@ -228,6 +282,40 @@ function NoteEditor({ note, onSave }) {
   }, []);
 
   if (!editor) return null;
+  async function formatCurrentBlock() {
+  const { $from } = editor.state.selection;
+  const node = $from.parent;
+  if (node.type.name !== "codeBlock") return;
+
+  const language = node.attrs.language;
+  if (!language) {
+    setFormatMsg("Pick a language first");
+  } else {
+    const from = $from.start();
+    const to = $from.end();
+    try {
+      const out = (await formatCode(node.textContent, language)).trimEnd();
+      if (out) {
+        editor
+          .chain()
+          .focus()
+          .command(({ tr, state }) => {
+            tr.replaceWith(from, to, state.schema.text(out));
+            return true;
+          })
+          .run();
+      }
+      setFormatMsg("Formatted");
+    } catch (err) {
+      setFormatMsg(
+        err.message === "unsupported"
+          ? `Formatting isn't available for ${language}`
+          : "Couldn't format: check the code for syntax errors"
+      );
+    }
+  }
+  setTimeout(() => setFormatMsg(""), 3000);
+}
 
   const btn = (label, active, run) => (
     <button
@@ -245,6 +333,7 @@ function NoteEditor({ note, onSave }) {
       <small>
         Created {parseDate(note.createdAt).toLocaleDateString()} ·{" "}
         {STATUS_LABEL[status]}
+        {formatMsg && ` · ${formatMsg}`}
       </small>
 
       <div style={{ margin: "16px 0 8px" }}>
@@ -262,6 +351,29 @@ function NoteEditor({ note, onSave }) {
         )}
         {btn("Code block", editor.isActive("codeBlock"), () =>
           editor.chain().focus().toggleCodeBlock().run()
+        )}
+        {editor.isActive("codeBlock") && (
+          <>
+          <select
+            value={editor.getAttributes("codeBlock").language ?? ""}
+            onChange={(e) =>
+              editor
+                .chain()
+                .focus()
+                .updateAttributes("codeBlock", { language: e.target.value || null })
+                .run()
+            }
+          >
+            {LANGUAGES.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+          <button onClick={formatCurrentBlock} style={{ marginLeft: 4 }}>
+            Format
+          </button>
+          </>
         )}
       </div>
 

@@ -1,0 +1,178 @@
+[
+  {
+    "id": "schema.public",
+    "label": "Create schema \"public\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres"
+    },
+    "precheck": [],
+    "execute": [
+      {
+        "description": "Create schema \"public\"",
+        "sql": "CREATE SCHEMA IF NOT EXISTS \"public\"",
+        "params": []
+      }
+    ],
+    "postcheck": []
+  },
+  {
+    "id": "table.Node",
+    "label": "Create table \"Node\"",
+    "summary": "Creates table \"Node\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "Node"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"Node\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"Node\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"Node\"",
+        "sql": "CREATE TABLE \"public\".\"Node\" (\n  \"content\" jsonb,\n  \"createdAt\" timestamptz DEFAULT (now()) NOT NULL,\n  \"id\" text NOT NULL,\n  \"name\" text NOT NULL,\n  \"parentId\" text,\n  \"position\" int4 DEFAULT 0 NOT NULL,\n  \"type\" text NOT NULL,\n  \"updatedAt\" timestamptz NOT NULL,\n  \"userId\" text NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"Node\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"Node\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.Node.Node_parentId_idx_6a68f597",
+    "label": "Create index \"Node_parentId_idx_6a68f597\" on \"Node\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "Node_parentId_idx_6a68f597",
+        "table": "Node"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"Node_parentId_idx_6a68f597\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"Node_parentId_idx_6a68f597\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"Node_parentId_idx_6a68f597\"",
+        "sql": "CREATE INDEX \"Node_parentId_idx_6a68f597\" ON \"public\".\"Node\" (\"parentId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"Node_parentId_idx_6a68f597\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"Node_parentId_idx_6a68f597\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.Node.Node_userId_idx_a489d58a",
+    "label": "Create index \"Node_userId_idx_a489d58a\" on \"Node\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "Node_userId_idx_a489d58a",
+        "table": "Node"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"Node_userId_idx_a489d58a\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"Node_userId_idx_a489d58a\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"Node_userId_idx_a489d58a\"",
+        "sql": "CREATE INDEX \"Node_userId_idx_a489d58a\" ON \"public\".\"Node\" (\"userId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"Node_userId_idx_a489d58a\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"Node_userId_idx_a489d58a\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.Node.Node_parentId_fkey",
+    "label": "Add foreign key \"Node_parentId_fkey\" on \"Node\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "Node_parentId_fkey",
+        "table": "Node"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"Node_parentId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "Node_parentId_fkey",
+          "public",
+          "\"public\".\"Node\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"Node_parentId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"Node\"\nADD CONSTRAINT \"Node_parentId_fkey\"\nFOREIGN KEY (\"parentId\")\nREFERENCES \"public\".\"Node\" (\"id\")\nON DELETE CASCADE"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"Node_parentId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "Node_parentId_fkey",
+          "public",
+          "\"public\".\"Node\""
+        ]
+      }
+    ]
+  }
+]

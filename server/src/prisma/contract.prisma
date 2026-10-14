@@ -1,18 +1,26 @@
 // use prisma-8
 
-model Node {
-  id             String        @id @default(uuid())
-  userId         String
-  parentId       String?
-  parent         Node?        @relation("Tree",fields: [parentId], references: [id], onDelete: Cascade)
-  children       Node[]       @relation("Tree")
-  type           String
-  name           String 
-  content        Jsonb?
-  position       Int          @default(0)
-  createdAt      TimestamptzString @default(now())
-  updatedAt     temporal.updatedAtString()
+model User {
+  id           String            @id @default(uuid())
+  email        String            @unique
+  passwordHash String
+  createdAt    TimestamptzString @default(now())
+  nodes        Node[]
+}
 
+model Node {
+  id        String            @id @default(uuid())
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentId  String?
+  parent    Node?             @relation("Tree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Node[]            @relation("Tree")
+  type      String
+  name      String
+  content   Jsonb?
+  position  Int               @default(0)
+  createdAt TimestamptzString @default(now())
+  updatedAt temporal.updatedAtString()
 
   @@index([userId])
   @@index([parentId])
