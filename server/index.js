@@ -1,3 +1,5 @@
+import cookieParser from "cookie-parser";
+import authRouter from "./auth.js";
 import express from "express";
 import cors from "cors";
 import "dotenv/config";
@@ -6,6 +8,8 @@ import { db } from "./src/prisma/db.ts";
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
+app.use(cookieParser());
+app.use("/auth", authRouter);
 
 const TEMP_USER_ID = "demo-user"; // placeholder until we add auth
 const nodes = db.orm.public.Node;
